@@ -118,8 +118,8 @@ function extractTypeNames(typeStr: string): string[] {
     if (part.startsWith('{')) { continue; }
     if (part === '') { continue; }
 
-    // Clean identifier — must start with uppercase (convention for types)
-    const identMatch = part.match(/^([A-Z]\w*)$/);
+    // Clean identifier — any valid TS identifier that isn't a primitive
+    const identMatch = part.match(/^([a-zA-Z_$]\w*)$/);
     if (identMatch) {
       names.push(identMatch[1]);
     }

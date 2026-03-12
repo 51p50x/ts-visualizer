@@ -3,6 +3,8 @@ import {
   GraphData,
 } from './types';
 import { toGraphData } from './graphModel';
+import { Node, SourceFile, SyntaxKind } from 'ts-morph';
+import { parseTypeDeclaration } from '../parser';
 
 // ─── Public API ──────────────────────────────────────────────────
 
@@ -32,11 +34,12 @@ export interface ExportPayload {
  */
 export function serializeToJson(
   resolved: ResolvedTypeHierarchy,
-  format: ExportFormat = 'full'
+  format: ExportFormat = 'full',
+  contextNode?: Node
 ): string {
   // Simple format: flat object { propName: type } — the "effective shape"
   if (format === 'simple') {
-    return JSON.stringify(toSimpleShape(resolved), null, 2);
+    return JSON.stringify(toSimpleShapeDeep(resolved, contextNode), null, 2);
   }
 
   const payload: ExportPayload = {
@@ -81,22 +84,28 @@ export function toExportPayload(
 
 // ─── Simple Shape ────────────────────────────────────────────────
 
+const PRIMITIVES = new Set([
+  'string', 'number', 'boolean', 'void', 'null', 'undefined',
+  'any', 'unknown', 'never', 'object', 'symbol', 'bigint',
+  'Date', 'RegExp', 'Error', 'Function',
+  'true', 'false',
+]);
+
 /**
- * Produce a clean, flat object representing the effective shape
- * of the type — all properties and methods (own + inherited)
- * as { name: type }.
+ * Produce a deep object representing the effective shape
+ * of the type — expanding nested object types recursively.
  *
- * Example output for a class with inherited `id: string` and own `email: string`:
- * {
- *   "id": "string",
- *   "email": "string",
- *   "save()": "() => Promise<void>"
- * }
+ * Example: if User has `address: Address` and Address has `street: string`,
+ * output: { "address": { "__type": "Address", "street": "string" } }
  */
-function toSimpleShape(
-  resolved: ResolvedTypeHierarchy
-): Record<string, string> {
-  const shape: Record<string, string> = {};
+function toSimpleShapeDeep(
+  resolved: ResolvedTypeHierarchy,
+  contextNode?: Node,
+  visited?: Set<string>
+): Record<string, unknown> {
+  const shape: Record<string, unknown> = {};
+  const seen = visited ?? new Set<string>();
+  seen.add(resolved.root.name);
 
   // Sort: own members first (level 0), then inherited by level
   const sorted = [...resolved.allMembers].sort(
@@ -104,7 +113,6 @@ function toSimpleShape(
   );
 
   for (const member of sorted) {
-    // Skip constructors — they're not part of the "shape"
     if (member.kind === 'constructor') {
       continue;
     }
@@ -114,12 +122,113 @@ function toSimpleShape(
         ? `${member.name}()`
         : member.name;
 
-    shape[key] = member.kind === 'method'
-      ? member.type
-      : member.type;
+    // Try to expand nested types
+    if (contextNode && member.kind !== 'method') {
+      const expanded = tryExpandType(member.type, contextNode, seen);
+      if (expanded !== null) {
+        shape[key] = expanded;
+        continue;
+      }
+    }
+
+    shape[key] = member.type;
   }
 
   return shape;
+}
+
+/**
+ * Try to expand a type string into a nested object.
+ * Returns null if the type is primitive or cannot be resolved.
+ */
+function tryExpandType(
+  typeStr: string,
+  contextNode: Node,
+  visited: Set<string>
+): Record<string, unknown> | Record<string, unknown>[] | null {
+  const isArray = typeStr.includes('[]') || typeStr.startsWith('Array<');
+  const baseName = extractBaseTypeName(typeStr);
+
+  if (!baseName) { return null; }
+  if (PRIMITIVES.has(baseName)) { return null; }
+  if (visited.has(baseName)) {
+    // Circular reference — just show the type name
+    return null;
+  }
+
+  // Try to find the declaration
+  const decl = findDeclarationInProject(contextNode, baseName);
+  if (!decl) { return null; }
+
+  visited.add(baseName);
+
+  const parsed = parseTypeDeclaration(decl);
+  const nested: Record<string, unknown> = {};
+
+  for (const m of parsed.members) {
+    if (m.kind === 'constructor') { continue; }
+    const mKey = m.kind === 'method' ? `${m.name}()` : m.name;
+
+    // Recursively expand
+    const expanded = tryExpandType(m.type, contextNode, visited);
+    nested[mKey] = expanded !== null ? expanded : m.type;
+  }
+
+  // Wrap in array if the original type was an array
+  if (isArray) {
+    return [nested];
+  }
+
+  return nested;
+}
+
+/**
+ * Extract the base type name from a type string.
+ * "Address" → "Address", "Order[]" → "Order", "Array<Item>" → "Item"
+ */
+function extractBaseTypeName(typeStr: string): string | null {
+  let cleaned = typeStr.replace(/\[\]/g, '').trim();
+
+  // Handle function types
+  if (cleaned.includes('=>')) { return null; }
+
+  // Handle unions/intersections — skip complex ones
+  if (cleaned.includes('|') || cleaned.includes('&')) { return null; }
+
+  // Handle Array<X>
+  const arrayMatch = cleaned.match(/^Array<(.+)>$/);
+  if (arrayMatch) {
+    cleaned = arrayMatch[1].trim();
+  }
+
+  // Must be a simple identifier
+  const identMatch = cleaned.match(/^([a-zA-Z_$]\w*)$/);
+  return identMatch ? identMatch[1] : null;
+}
+
+function findDeclarationInProject(contextNode: Node, name: string): Node | undefined {
+  const sourceFile = contextNode.getSourceFile();
+  const project = sourceFile.getProject();
+
+  const local = searchInSourceFile(sourceFile, name);
+  if (local) { return local; }
+
+  for (const sf of project.getSourceFiles()) {
+    if (sf === sourceFile) { continue; }
+    const result = searchInSourceFile(sf, name);
+    if (result) { return result; }
+  }
+
+  return undefined;
+}
+
+function searchInSourceFile(sourceFile: SourceFile, name: string): Node | undefined {
+  return (
+    sourceFile.getClass(name) ??
+    sourceFile.getInterface(name) ??
+    sourceFile.getTypeAlias(name) ??
+    undefined
+  );
 }
 
 // ─── Internal ────────────────────────────────────────────────────

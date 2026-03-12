@@ -2,7 +2,7 @@
   "name": "ts-object-visualizer",
   "displayName": "TS Object Visualizer",
   "description": "Visualize TypeScript classes, interfaces and type aliases as interactive node graphs — with full deep inheritance resolution.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "51p50x",
   "license": "MIT",
   "icon": "images/icon.png",

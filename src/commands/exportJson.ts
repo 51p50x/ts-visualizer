@@ -68,7 +68,7 @@ export async function exportJsonCommand(): Promise<void> {
 
     // Resolve hierarchy
     const resolved = resolveFullTypeHierarchy(result.node);
-    const json = serializeToJson(resolved, formatChoice.value);
+    const json = serializeToJson(resolved, formatChoice.value, result.node);
 
     // Open in a new untitled JSON document
     const doc = await vscode.workspace.openTextDocument({
