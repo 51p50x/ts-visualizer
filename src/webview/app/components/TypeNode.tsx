@@ -15,9 +15,12 @@ const TypeNode: React.FC<TypeNodeProps> = ({ data }) => {
   const entries = Object.entries(data.simpleShape ?? {});
   const hasEntries = entries.length > 0;
 
+  const isComposition = data.level === -1;
+  const className = `type-node${isComposition ? ' type-node--composition' : ''}`;
+
   return (
     <div
-      className="type-node"
+      className={className}
       style={{ '--node-color': data.color } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Top} />

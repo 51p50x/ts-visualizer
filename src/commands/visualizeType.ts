@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getProject, getProjectForSingleFile, getSourceFile } from '../utils/projectLoader';
 import { getTypeAtCursor } from '../utils/cursorUtils';
-import { resolveFullTypeHierarchy } from '../resolver';
+import { resolveFullTypeHierarchy, resolveCompositions } from '../resolver';
 import { toGraphData } from '../model/graphModel';
 import { TSVisualizerPanel } from '../webview/WebviewPanel';
 
@@ -64,14 +64,19 @@ export async function visualizeTypeCommand(
     const resolved = resolveFullTypeHierarchy(result.node);
     const graphData = toGraphData(resolved);
 
+    // Resolve composition relationships (nested object types)
+    const compositions = resolveCompositions(graphData.nodes, result.node);
+    const allNodes = [...graphData.nodes, ...compositions.nodes];
+    const allEdges = [...graphData.edges, ...compositions.edges];
+
     // Open / reuse the webview panel
     const panel = TSVisualizerPanel.createOrShow(extensionUri);
 
     // Send graph data to the webview (small delay to ensure webview is ready)
     setTimeout(() => {
       panel.setGraphData({
-        nodes: graphData.nodes,
-        edges: graphData.edges,
+        nodes: allNodes,
+        edges: allEdges,
         rootName: result.name,
       });
     }, 300);

@@ -2,6 +2,16 @@
 
 All notable changes to the "TS Object Visualizer" extension will be documented in this file.
 
+## [0.2.0] - 2026-03-12
+
+### Added
+
+- **Nested Object Expansion** — Properties whose types are known classes, interfaces, or type aliases are now resolved and displayed as connected composition nodes (dashed cyan border)
+- **Array & Generic Support** — Handles `Order[]`, `Array<Item>`, `Map<string, User>`, unions, and intersections when resolving nested types
+- **Selection-Based Visualization** — Select any type name in your code and run Visualize Type to resolve it, even if your cursor isn't on the declaration
+- **Composition Edges** — Dashed cyan edges labeled with the property name (e.g. `address`, `orders []`) connect parent types to their nested types
+- **Recursive Composition** — Nested types are resolved up to 3 levels deep with circular reference protection
+
 ## [0.1.0] - 2026-03-12
 
 ### Added

@@ -98,6 +98,11 @@
   margin-left: auto;
 }
 
+/* ─── Composition Node (level -1) ─────────────────────── */
+.type-node--composition {
+  border-style: dashed;
+}
+
 /* ─── Edge Labels ─────────────────────────────────────── */
 .edge-label {
   font-size: 10px;

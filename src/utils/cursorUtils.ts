@@ -24,6 +24,7 @@ const VISUALIZABLE_KINDS = new Set([
  * at or around the cursor.
  *
  * Strategy:
+ * 0. If text is selected, try to find a declaration matching the selection.
  * 1. Try exact position — walk up the AST.
  * 2. If nothing found, find the closest declaration in the file by line distance.
  * 3. If multiple declarations exist at the same distance, pick the one above the cursor.
@@ -32,6 +33,18 @@ export function getTypeAtCursor(
   editor: vscode.TextEditor,
   sourceFile: SourceFile
 ): CursorTypeResult | undefined {
+  // Strategy 0: text selection — find by name
+  const selection = editor.selection;
+  if (!selection.isEmpty) {
+    const selectedText = editor.document.getText(selection).trim();
+    if (selectedText) {
+      const result = findDeclarationByName(sourceFile, selectedText);
+      if (result) {
+        return result;
+      }
+    }
+  }
+
   const position = editor.selection.active;
   const offset = editor.document.offsetAt(position);
 
@@ -46,6 +59,40 @@ export function getTypeAtCursor(
 
   // Strategy 2: find the closest declaration by line distance
   return findClosestDeclaration(sourceFile, position.line + 1); // ts-morph uses 1-based lines
+}
+
+/**
+ * Find a declaration by name, searching the current file and then all project files.
+ */
+function findDeclarationByName(
+  sourceFile: SourceFile,
+  name: string
+): CursorTypeResult | undefined {
+  // Search current file
+  const local = searchFileForDeclaration(sourceFile, name);
+  if (local) { return nodeToResult(local); }
+
+  // Search across all project files
+  const project = sourceFile.getProject();
+  for (const sf of project.getSourceFiles()) {
+    if (sf === sourceFile) { continue; }
+    const result = searchFileForDeclaration(sf, name);
+    if (result) { return nodeToResult(result); }
+  }
+
+  return undefined;
+}
+
+function searchFileForDeclaration(
+  sourceFile: SourceFile,
+  name: string
+): Node | undefined {
+  return (
+    sourceFile.getClass(name) ??
+    sourceFile.getInterface(name) ??
+    sourceFile.getTypeAlias(name) ??
+    undefined
+  );
 }
 
 /**
